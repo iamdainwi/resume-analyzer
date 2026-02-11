@@ -40,6 +40,13 @@ app = FastAPI(
     version="1.0.0",
     lifespan=lifespan,
 )
+@app.exception_handler(Exception)
+async def catch_all(request, exc):
+    logger.exception("Unhandled exception")
+    return JSONResponse(
+        status_code=500,
+        content={"error": "internal server error", "detail": str(exc)},
+    )
 
 app.add_middleware(
     CORSMiddleware,
