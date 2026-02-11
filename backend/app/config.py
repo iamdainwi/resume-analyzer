@@ -28,7 +28,8 @@ CORS_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip
 
 # ── File Uploads ────────────────────────────────────────────────────────────
 _default_upload = "/tmp/uploads" if IS_VERCEL else "uploads"
-UPLOAD_DIR: str = os.getenv("UPLOAD_DIR", _default_upload)
+# Upload directory
+UPLOAD_DIR = "/tmp/uploads" if os.getenv("VERCEL") else "uploads"
 MAX_UPLOAD_FILES: int = int(os.getenv("MAX_UPLOAD_FILES", "20"))
 ALLOWED_EXTENSIONS: set[str] = {".pdf", ".docx", ".doc"}
 
