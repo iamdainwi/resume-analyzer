@@ -15,11 +15,11 @@ from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 
-from .config import (
+from app.config import (
     CORS_ORIGINS, UPLOAD_DIR, MAX_UPLOAD_FILES, ALLOWED_EXTENSIONS,
     LOG_LEVEL, IS_VERCEL,
 )
-from .job_service import process_job
+from app.job_service import process_job
 
 # ── Logging ─────────────────────────────────────────────────────────────────
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
