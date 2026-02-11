@@ -1,45 +1,47 @@
 """
 FastAPI application entry point.
-
-Stateless version: No database, no background tasks.
-Requests are processed synchronously and results returned immediately.
-This is optimal for Vercel serverless functions.
+Stateless version for Vercel serverless functions.
 """
 
 import logging
 import os
 import shutil
 import time
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
+from fastapi.responses import JSONResponse
 
 from app.config import (
-    CORS_ORIGINS, UPLOAD_DIR, MAX_UPLOAD_FILES, ALLOWED_EXTENSIONS,
-    LOG_LEVEL, IS_VERCEL,
+    CORS_ORIGINS, UPLOAD_DIR, MAX_UPLOAD_FILES,
+    ALLOWED_EXTENSIONS, LOG_LEVEL, IS_VERCEL,
 )
 from app.job_service import process_job
 
-# ── Logging ─────────────────────────────────────────────────────────────────
+
+# ── Logging ────────────────────────────────────────────────────────────────
 logging.basicConfig(level=getattr(logging, LOG_LEVEL, logging.INFO))
 logger = logging.getLogger(__name__)
 
 
-# ── Lifespan ────────────────────────────────────────────────────────────────
+# ── Lifespan (must be defined before app) ──────────────────────────────────
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Startup / shutdown hook."""
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     yield
     logger.info("Shutting down.")
 
 
+# ── App creation ───────────────────────────────────────────────────────────
 app = FastAPI(
     title="HR Resume Analyzer API",
     version="1.0.0",
     lifespan=lifespan,
 )
+
+
+# ── Global error handler ───────────────────────────────────────────────────
 @app.exception_handler(Exception)
 async def catch_all(request, exc):
     logger.exception("Unhandled exception")
@@ -48,6 +50,8 @@ async def catch_all(request, exc):
         content={"error": "internal server error", "detail": str(exc)},
     )
 
+
+# ── CORS ───────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
     allow_origins=CORS_ORIGINS,
@@ -57,8 +61,7 @@ app.add_middleware(
 )
 
 
-# ── Routes ──────────────────────────────────────────────────────────────────
-
+# ── Routes ─────────────────────────────────────────────────────────────────
 @app.get("/")
 def health_check():
     return {"message": "HR Resume Analyzer API", "status": "running"}
@@ -69,8 +72,7 @@ async def start_job(
     jd: str = Form(...),
     files: list[UploadFile] = File(...),
 ):
-    # ── Validate inputs ─────────────────────────────────────────────────
-    if not jd or not jd.strip():
+    if not jd.strip():
         raise HTTPException(status_code=400, detail="Job description cannot be empty")
 
     if not files:
@@ -89,18 +91,15 @@ async def start_job(
         if ext not in ALLOWED_EXTENSIONS:
             raise HTTPException(
                 status_code=400,
-                detail=f"File {f.filename} has unsupported format. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
+                detail=f"{f.filename} unsupported. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
             )
 
-    # ── Ensure upload dir exists (Vercel cold start) ────────────────────
     if IS_VERCEL:
         os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-    # ── Save uploaded files ─────────────────────────────────────────────
-    # We generate a unique ID for this batch just for file organization
     job_id = int(time.time())
-    file_paths: list[str] = []
-    
+    file_paths = []
+
     try:
         for f in files:
             path = os.path.join(UPLOAD_DIR, f"{job_id}_{f.filename}")
@@ -109,20 +108,17 @@ async def start_job(
             file_paths.append(path)
             logger.info("Saved file: %s -> %s", f.filename, path)
     except Exception:
-        # Roll back saved files on partial failure
         for saved in file_paths:
             if os.path.exists(saved):
                 os.remove(saved)
         logger.exception("Failed to save uploaded files")
         raise HTTPException(status_code=500, detail="Failed to save uploaded files")
 
-    # ── Process Synchronously ───────────────────────────────────────────
-    # Since we are stateless, we process immediately and return results
     results = process_job(jd, file_paths)
 
     return {
         "job_id": job_id,
         "message": "Processing complete",
         "total_files": len(files),
-        **results  # includes status, processed, candidates
+        **results,
     }
