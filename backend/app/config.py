@@ -14,9 +14,7 @@ load_dotenv()
 # ── Runtime detection ───────────────────────────────────────────────────────
 IS_VERCEL: bool = bool(os.getenv("VERCEL"))
 
-# ── Database ────────────────────────────────────────────────────────────────
-_default_db = "sqlite:////tmp/hr.db" if IS_VERCEL else "sqlite:///./hr.db"
-DATABASE_URL: str = os.getenv("DATABASE_URL", _default_db)
+
 
 # ── Ollama / LLM ───────────────────────────────────────────────────────────
 OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "https://ollama.com")

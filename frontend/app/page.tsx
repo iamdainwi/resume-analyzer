@@ -92,7 +92,6 @@ const Icons = {
 export default function Home() {
   const [jd, setJd] = useState("");
   const [files, setFiles] = useState<FileList | null>(null);
-  const [jobId, setJobId] = useState<number | null>(null);
   const [progress, setProgress] = useState(0);
   const [total, setTotal] = useState(0);
   const [processed, setProcessed] = useState(0);
@@ -101,7 +100,6 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null);
   const [serverStatus, setServerStatus] = useState<ServerStatus>("checking");
   const [dragActive, setDragActive] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   /* ── Server health ─────────────────────────────────────────────────── */
@@ -119,47 +117,6 @@ export default function Home() {
     return () => clearInterval(id);
   }, []);
 
-  useEffect(() => {
-    return () => { if (intervalRef.current) clearInterval(intervalRef.current); };
-  }, []);
-
-  /* ── Polling ───────────────────────────────────────────────────────── */
-  const pollStatus = useCallback((id: number) => {
-    let failures = 0;
-    const poll = async () => {
-      try {
-        const res = await axios.get(`${API_BASE}/job-status/${id}`, { timeout: 10_000 });
-        const d = res.data;
-        const pct = d.total === 0 ? 0 : (d.processed / d.total) * 100;
-        setProgress(pct);
-        setProcessed(d.processed);
-        setTotal(d.total);
-        setResults(d.candidates || []);
-        failures = 0;
-        if (d.status === "completed" || d.status === "completed_with_errors") {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          intervalRef.current = null;
-          setLoading(false);
-        } else if (d.status === "failed") {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          intervalRef.current = null;
-          setError("Processing failed. Please try again.");
-          setLoading(false);
-        }
-      } catch {
-        failures++;
-        if (failures >= 8) {
-          if (intervalRef.current) clearInterval(intervalRef.current);
-          intervalRef.current = null;
-          setError("Lost connection to server.");
-          setLoading(false);
-        }
-      }
-    };
-    poll();
-    intervalRef.current = setInterval(poll, 3_000);
-  }, []);
-
   /* ── Start job ─────────────────────────────────────────────────────── */
   const startJob = async () => {
     if (!files || !jd.trim()) {
@@ -170,7 +127,6 @@ export default function Home() {
     setError(null);
     setResults([]);
     setProgress(0);
-    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
 
     const formData = new FormData();
     formData.append("jd", jd);
@@ -178,23 +134,23 @@ export default function Home() {
 
     try {
       const res = await axios.post(`${API_BASE}/start-job`, formData, {
-        timeout: 300_000, // 5min — synchronous mode can take a while
+        timeout: 300_000, // 5min timeout for long sync processing
         headers: { "Content-Type": "multipart/form-data" },
       });
       const data = res.data;
-      setJobId(data.job_id);
-      setTotal(data.total_files);
-
-      // If response already contains candidates (Vercel sync mode), use them directly
-      if (data.candidates && data.candidates.length > 0) {
-        setResults(data.candidates);
-        setProcessed(data.processed || data.total_files);
-        setProgress(100);
-        setLoading(false);
-      } else {
-        // Local mode: poll for results
-        pollStatus(data.job_id);
+      
+      setTotal(data.total || 0);
+      setProcessed(data.processed || 0);
+      setResults(data.candidates || []);
+      
+      if (data.status === "failed") {
+        setError("Processing failed. Please try again.");
       }
+      
+      // Optimization: jump to 100% since we are done
+      setProgress(100);
+      setLoading(false);
+
     } catch (err) {
       setLoading(false);
       if (axios.isAxiosError(err)) {
@@ -202,6 +158,8 @@ export default function Home() {
           setError("Cannot connect to server. Is the backend running?");
         else if (err.response?.status === 400)
           setError(err.response.data?.detail || "Invalid request.");
+        else if (err.code === "ECONNABORTED")
+          setError("Request timed out. The server took too long to respond.");
         else setError(err.response?.data?.detail || "Something went wrong.");
       } else {
         setError("An unexpected error occurred.");
@@ -402,20 +360,18 @@ export default function Home() {
         </Button>
 
         {/* ── Progress ─────────────────────────────────────────────── */}
-        {jobId !== null && loading && (
+        {loading && (
           <Card className="animate-fade-up">
             <CardContent className="pt-6 space-y-3">
               <div className="flex items-center justify-between">
                 <p className="text-sm font-medium">Processing resumes</p>
                 <p className="text-xs tabular-nums text-muted-foreground">
-                  {processed} / {total}
+                  Please wait, this may take a minute...
                 </p>
               </div>
-              <Progress value={Math.max(progress, 2)} className="h-2" />
+              <Progress value={progress > 0 ? progress : 5} className="h-2 animate-pulse" />
               <p className="text-xs text-muted-foreground">
-                {progress < 100
-                  ? "Evaluating candidates against job requirements…"
-                  : "Finishing up…"}
+                Evaluating candidates against job requirements...
               </p>
             </CardContent>
           </Card>

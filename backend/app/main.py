@@ -1,9 +1,9 @@
 """
 FastAPI application entry point.
 
-Supports both local (background tasks) and Vercel serverless (synchronous) modes.
-On Vercel, BackgroundTasks won't survive past the response, so processing
-runs synchronously within the request and returns results directly.
+Stateless version: No database, no background tasks.
+Requests are processed synchronously and results returned immediately.
+This is optimal for Vercel serverless functions.
 """
 
 import logging
@@ -11,17 +11,14 @@ import os
 import shutil
 import time
 
-from fastapi import FastAPI, UploadFile, File, BackgroundTasks, Form, HTTPException, Depends
+from fastapi import FastAPI, UploadFile, File, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
-from sqlalchemy.orm import Session
 
 from .config import (
     CORS_ORIGINS, UPLOAD_DIR, MAX_UPLOAD_FILES, ALLOWED_EXTENSIONS,
     LOG_LEVEL, IS_VERCEL,
 )
-from .database import Base, engine, get_db
-from .models import Job, Candidate
 from .job_service import process_job
 
 # ── Logging ─────────────────────────────────────────────────────────────────
@@ -33,10 +30,6 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup / shutdown hook."""
-    logger.info("Creating database tables...")
-    start = time.time()
-    Base.metadata.create_all(bind=engine)
-    logger.info("Database setup completed in %.2fs", time.time() - start)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
     yield
     logger.info("Shutting down.")
@@ -66,10 +59,8 @@ def health_check():
 
 @app.post("/start-job")
 async def start_job(
-    background_tasks: BackgroundTasks,
     jd: str = Form(...),
     files: list[UploadFile] = File(...),
-    db: Session = Depends(get_db),
 ):
     # ── Validate inputs ─────────────────────────────────────────────────
     if not jd or not jd.strip():
@@ -94,22 +85,18 @@ async def start_job(
                 detail=f"File {f.filename} has unsupported format. Allowed: {', '.join(ALLOWED_EXTENSIONS)}",
             )
 
-    # ── Ensure tables + upload dir exist (Vercel cold start) ────────────
+    # ── Ensure upload dir exists (Vercel cold start) ────────────────────
     if IS_VERCEL:
-        Base.metadata.create_all(bind=engine)
         os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-    # ── Create job record ───────────────────────────────────────────────
-    job = Job(status="processing", total_files=len(files), processed_files=0)
-    db.add(job)
-    db.commit()
-    db.refresh(job)
-
     # ── Save uploaded files ─────────────────────────────────────────────
+    # We generate a unique ID for this batch just for file organization
+    job_id = int(time.time())
     file_paths: list[str] = []
+    
     try:
         for f in files:
-            path = os.path.join(UPLOAD_DIR, f"{job.id}_{int(time.time())}_{f.filename}")
+            path = os.path.join(UPLOAD_DIR, f"{job_id}_{f.filename}")
             with open(path, "wb") as buf:
                 shutil.copyfileobj(f.file, buf)
             file_paths.append(path)
@@ -122,80 +109,13 @@ async def start_job(
         logger.exception("Failed to save uploaded files")
         raise HTTPException(status_code=500, detail="Failed to save uploaded files")
 
-    # ── Process ─────────────────────────────────────────────────────────
-    if IS_VERCEL:
-        # Serverless: run synchronously — background tasks won't survive
-        process_job(job.id, jd, file_paths)
-
-        # Re-fetch job and candidates to return full results immediately
-        db.refresh(job)
-        candidates = (
-            db.query(Candidate)
-            .filter(Candidate.job_id == job.id)
-            .order_by(Candidate.score.desc())
-            .all()
-        )
-        return {
-            "job_id": job.id,
-            "message": "Processing complete",
-            "total_files": len(files),
-            "status": job.status,
-            "processed": job.processed_files,
-            "total": job.total_files,
-            "candidates": [
-                {
-                    "name": c.name,
-                    "email": c.email,
-                    "phone": c.phone,
-                    "github": c.github,
-                    "score": round(c.score, 1),
-                    "classification": c.classification,
-                    "summary": c.summary,
-                }
-                for c in candidates
-            ],
-        }
-    else:
-        # Local: run in background for better UX
-        background_tasks.add_task(process_job, job.id, jd, file_paths)
-        logger.info("Started job %d with %d files", job.id, len(files))
-        return {
-            "job_id": job.id,
-            "message": "Processing started",
-            "total_files": len(files),
-        }
-
-
-@app.get("/job-status/{job_id}")
-def job_status(job_id: int, db: Session = Depends(get_db)):
-    if job_id <= 0:
-        raise HTTPException(status_code=400, detail="Invalid job ID")
-
-    job = db.query(Job).filter(Job.id == job_id).first()
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-
-    candidates = (
-        db.query(Candidate)
-        .filter(Candidate.job_id == job_id)
-        .order_by(Candidate.score.desc())
-        .all()
-    )
+    # ── Process Synchronously ───────────────────────────────────────────
+    # Since we are stateless, we process immediately and return results
+    results = process_job(jd, file_paths)
 
     return {
-        "status": job.status,
-        "processed": job.processed_files,
-        "total": job.total_files,
-        "candidates": [
-            {
-                "name": c.name,
-                "email": c.email,
-                "phone": c.phone,
-                "github": c.github,
-                "score": round(c.score, 1),
-                "classification": c.classification,
-                "summary": c.summary,
-            }
-            for c in candidates
-        ],
+        "job_id": job_id,
+        "message": "Processing complete",
+        "total_files": len(files),
+        **results  # includes status, processed, candidates
     }
