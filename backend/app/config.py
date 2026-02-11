@@ -7,9 +7,9 @@ We detect the VERCEL environment variable and adjust paths automatically.
 """
 
 import os
-from dotenv import load_dotenv
+# from dotenv import load_dotenv
 
-load_dotenv()
+# load_dotenv()
 
 # ── Runtime detection ───────────────────────────────────────────────────────
 IS_VERCEL: bool = bool(os.getenv("VERCEL"))
@@ -23,8 +23,9 @@ OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 # Comma-separated origins, e.g. "http://localhost:3000,https://app.example.com"
-_raw_origins = os.getenv("CORS_ORIGINS", "https://resume-analyzer-h87z.vercel.app")
-CORS_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+# _raw_origins = os.getenv("CORS_ORIGINS", "https://resume-analyzer-h87z.vercel.app")
+# CORS_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+# CORS_ORIGINS: "https://resume-analyzer-h87z.vercel.app"
 
 # ── File Uploads ────────────────────────────────────────────────────────────
 _default_upload = "/tmp/uploads" if IS_VERCEL else "uploads"

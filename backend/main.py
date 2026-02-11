@@ -14,7 +14,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.config import (
-    CORS_ORIGINS, UPLOAD_DIR, MAX_UPLOAD_FILES,
+    UPLOAD_DIR, MAX_UPLOAD_FILES,
     ALLOWED_EXTENSIONS, LOG_LEVEL, IS_VERCEL,
 )
 from app.job_service import process_job
@@ -54,7 +54,7 @@ async def catch_all(request, exc):
 # ── CORS ───────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=CORS_ORIGINS,
+    allow_origins=["https://resume-analyzer-h87z.vercel.app"],
     allow_credentials=True,
     allow_methods=["GET", "POST", "OPTIONS"],
     allow_headers=["*"],
