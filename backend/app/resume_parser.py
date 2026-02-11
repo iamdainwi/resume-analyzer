@@ -11,7 +11,7 @@ Key changes from original:
 import re
 from typing import Optional
 
-import pdfplumber
+import pypdf
 from docx import Document
 
 
@@ -180,8 +180,14 @@ def extract_text(file_path: str) -> str:
     lower = file_path.lower()
 
     if lower.endswith(".pdf"):
-        with pdfplumber.open(file_path) as pdf:
-            return "\n".join(page.extract_text() or "" for page in pdf.pages)
+        try:
+            reader = pypdf.PdfReader(file_path)
+            text = []
+            for page in reader.pages:
+                text.append(page.extract_text() or "")
+            return "\n".join(text)
+        except Exception:
+            return ""
 
     if lower.endswith(".docx"):
         doc = Document(file_path)
