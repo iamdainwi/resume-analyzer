@@ -54,11 +54,12 @@ async def catch_all(request, exc):
 # ── CORS ───────────────────────────────────────────────────────────────────
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://resume-analyzer-h87z.vercel.app"],
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
+    allow_origins=["*"],       # allow all domains
+    allow_credentials=False,   # must be False when using "*"
+    allow_methods=["*"],       # allow all HTTP methods
+    allow_headers=["*"],       # allow all headers
 )
+
 
 
 # ── Routes ─────────────────────────────────────────────────────────────────
