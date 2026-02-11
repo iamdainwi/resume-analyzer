@@ -17,7 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Separator } from "@/components/ui/separator";
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://127.0.0.1:8000";
+const API_BASE = process.env.NEXT_PUBLIC_API_URL || "https://resume-analyzer-nine-lyart.vercel.app";
 
 /* ─── Types ──────────────────────────────────────────────────────────────── */
 interface CandidateResult {
@@ -106,7 +106,7 @@ export default function Home() {
   useEffect(() => {
     const check = async () => {
       try {
-        const res = await axios.get(`${API_BASE}/`, { timeout: 3000 });
+        const res = await axios.get(`${API_BASE}`, { timeout: 3000 });
         setServerStatus(res.status === 200 ? "online" : "offline");
       } catch {
         setServerStatus("offline");

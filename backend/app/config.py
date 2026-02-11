@@ -23,7 +23,7 @@ OLLAMA_API_KEY: str = os.getenv("OLLAMA_API_KEY", "")
 
 # ── CORS ────────────────────────────────────────────────────────────────────
 # Comma-separated origins, e.g. "http://localhost:3000,https://app.example.com"
-_raw_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://127.0.0.1:3000")
+_raw_origins = os.getenv("CORS_ORIGINS", "https://resume-analyzer-h87z.vercel.app")
 CORS_ORIGINS: list[str] = [o.strip() for o in _raw_origins.split(",") if o.strip()]
 
 # ── File Uploads ────────────────────────────────────────────────────────────
